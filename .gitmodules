@@ -3,4 +3,5 @@
 	url = https://github.com/linker-bot/linkerhand-cpp-sdk.git
 [submodule "RM_API2"]
 	path = RM_API2
-	url = https://github.com/RealManRobot/RM_API2.git
+	url = https://github.com/Yubo-Cui/RM_API2.git
+	branch = dev/cyb
