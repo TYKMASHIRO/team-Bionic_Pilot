@@ -7,6 +7,8 @@ logs/
 data/recordings/
 data/trajectories/
 data/skills/
+data/calib/
+data/calibration/
 *.log
 
 # 编辑器
