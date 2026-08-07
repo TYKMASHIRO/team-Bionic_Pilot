@@ -235,6 +235,7 @@ tools/                config_validator（可运行），trajectory_inspector / r
 | 文档 | 用途 |
 |------|------|
 | `Prompt.md` | 完整工程规范（总纲，任务一只取相关章节） |
+| `session2.md` | 阶段2（RM75 Adapter）执行聚焦版：Domain↔RM 映射、编译坑清单、阶段3 入口 |
 | `robot_hand_control/docs/vendor_api_mapping.md` | 厂商 API 逐项映射（含待确认项） |
 | `robot_hand_control/docs/architecture.md` | 分层架构 |
 | `robot_hand_control/docs/implementation_plan.md` | 阶段0-7 计划 |
