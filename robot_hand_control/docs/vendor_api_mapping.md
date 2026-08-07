@@ -239,7 +239,15 @@ class IModbus {
 
 - SDK 内部已把寄存器操作封装成完整 Modbus RTU 帧（含 CRC）交给 TX 回调。
 - `Modbus` 类（`communication/Modbus.h`）是直连串口实现：`Modbus("/dev/ttyUSB0", 115200)`，构造后 `initialize()`/`isOpen()`。
-- **本项目路径无 /dev/ttyUSB0**，而是经 RM75 末端 RS485 透传。因此实现 `RmPassthroughModbus : IModbus`，底层调用 RM 的寄存器 API。
+- **本项目路径无 /dev/ttyUSB0**，而是经 RM75 末端 RS485 透传。已实现 `RmPassthroughModbus : IModbus`（阶段3），底层调用 RM 的寄存器 API。
+- `DirectSerialModbus : IModbus` 已建接口 + 占位（阶段3），未实现直连串口，不伪造未验证 API。
+
+**RmPassthroughModbus 关键事实（阶段3 已实现，`drivers/linkerhand/transport/`）**：
+- 头文件以 `void*` 接收 RM 句柄（避免 `struct rm_robot_handle` 前置声明与 `rm_define.h` 匿名 typedef 冲突，见 session2 §6.1）。
+- **SDK 回调是 Tx/Rx 分离调用**（示例 `test_o6_modbus_0.cpp`）：Tx → `sendRawFrame`（内部执行 RM 事务并缓存响应帧），Rx → `receiveCompleteFrame`（取缓存）。
+- 功能码映射：0x04 → `rm_read_input_registers`(单)/`rm_read_multiple_input_registers`(多)；0x03 → 保持寄存器版本；0x06 → `rm_write_single_register`；0x10 → `rm_write_registers`（num≤10，RM 不返回响应帧，故按 0x10 标准响应回显 addr+count）。
+- **0x10 写后不读回校验**：O6 只支持 0x04 读，且位置目标写入后当前值滞后，回读校验不可靠。
+- 单次事务用 `std::mutex` 串行化；`ModbusFrameCodec` 提供 CRC16/帧解析/组帧（纯函数，mock 可测）。
 
 ### 2.4 O6 寄存器映射（`docs/O6_ModbusRTU_Protocol.md`）
 
@@ -260,28 +268,41 @@ class IModbus {
 
 ### 2.5 待确认/风险项
 
+**阶段3（O6 Adapter）已确认项**：
+
 | 项 | 状态 | 说明 |
 |----|------|------|
-| 压力传感器数据格式 | ⚠ 待实测 | 华威科 10×4 点阵，寄存器 47-87；SDK `getForce()` 返回三维数组，映射关系待硬件验证 |
-| RM75 透传时序 | ⚠ 待实测 | RM 单次读 1 个寄存器 / 多读 3-12 个；O6 6 通道位置可用多读一次取 6 个 |
-| O6 响应延迟 | ⚠ 待实测 | 透传超时需调优 |
-| `setEnable/setDisable` | ⚠ O6 不支持 | 返回 Unsupported |
+| SDK 回调为 Tx/Rx 分离 | ✅ 已从源码确认 | 示例 `test_o6_modbus_0.cpp`：Tx→`sendRawFrame`，Rx→`receiveCompleteFrame`；`RmPassthroughModbus` 按此设计 |
+| 0x10 写后无 RM 响应帧 | ✅ 已从源码确认 | RM 寄存器写 API 不返回 Modbus 帧，`RmPassthroughModbus` 按 0x10 标准响应回显 addr+count |
+| RM 寄存器读写数量限制 | ✅ 已从源码确认 | 单读 1、多读 3~12、多写 ≤10；O6 6 通道位置可用多读一次取 6 个 |
+| `setEnable/setDisable` | ✅ O6 不支持 | `clearError` 返回 Unsupported；`get_state` 用 0x04 读，不涉及 |
+| `rm_robot_handle` 前置声明冲突 | ✅ 已规避 | header 用 `void*`，`.cpp` 内 cast（见 session2 §6.1） |
+
+**仍需硬件实测的项（阶段3 无法在无硬件环境验证）**：
+
+| 项 | 状态 | 说明 |
+|----|------|------|
+| RM75 透传时序/波特率 | ⚠ 待硬件 | `rm_set_modbus_mode(handle, 1, 115200, timeout)` 实机是否能稳定收发 O6 帧；timeout 取值（当前默认 500ms→RM 侧 5 单位）需实测调优 |
+| O6 实际响应帧 | ⚠ 待硬件 | `parse_read_response` 假设标准 Modbus 04 响应（addr/FC/bytecount/data/CRC），实机需比对 SDK 期望帧 |
+| 压力数据格式 | ⚠ 待硬件 | 华威科 10×4 点阵，寄存器 45-87；SDK `getForce()` 返回三维数组，映射关系待硬件验证（阶段3 仅留接口，未实现） |
+| `rm_write_registers` 透传行为 | ⚠ 待硬件 | 是否要求严格 8N1 帧间隔、O6 是否丢弃过快连续帧 |
+| 单通道控制 | ⚠ 待验证 | 无单通道 set 方法，需切片 vector；行为与并发写依赖实测 |
 
 ## 3. 抽象接口 → 厂商 API 对照总表
 
-| 抽象接口 | RM75 实现（RealManAdapter） | O6 实现（LinkerHandAdapter） |
+| 抽象接口 | RM75 实现（RealManAdapter） | O6 实现（LinkerHandAdapter，阶段3） |
 |----------|----------------------------|------------------------------|
-| connect | `rm_init` + `rm_create_robot_arm` | 构造 `LinkerHandApi(O6,RIGHT,MODBUS)` + 回调注入 |
+| connect | `rm_init` + `rm_create_robot_arm` | `rm_set_modbus_mode(1,115200)` + 构造 `LinkerHandApi(O6,RIGHT,MODBUS)` + 回调注入（Tx→`sendRawFrame`，Rx→`receiveCompleteFrame`） |
 | disconnect | `rm_delete_robot_arm` | 析构 + `freeModbusCallback` |
-| getState | `rm_get_arm_all_state` + `rm_get_force_data` | `getPosition/getSpeed/getTorque/getTemperature/getFaultCode` |
-| moveJoint | `rm_movej` | `setPosition` |
-| stop | `rm_set_arm_slow_stop` | 无可直接停止 API（传当前值保持） |
-| emergencyStop | `rm_set_arm_stop` | N/A（手无急停，通过运动停止） |
+| getState | `rm_get_arm_all_state` + `rm_get_force_data` | `getPosition/getSpeed/getTorque/getTemperature/getFaultCode`（经 0x04 读，`valid=false` 时返回空） |
+| moveJoint | `rm_movej` | `setPosition`（经 0x10 写保持寄存器 0-5） |
+| stop | `rm_set_arm_slow_stop` | 重新发送当前 6 通道位置（0x10 写当前值保持） |
+| emergencyStop | `rm_set_arm_stop` | 同 stop（手无独立急停） |
 | startDragTeach | `rm_start_drag_teach(handle, 1)` | N/A（示教由手部人工操作） |
 | stopDragTeach | `rm_stop_drag_teach` | N/A |
 | replayTrajectory | `rm_drag_trajectory_origin` + `rm_run_drag_trajectory` | 按轨迹点 `setPosition`（由上层 Skill 同步） |
 | setToolFrame | `rm_set_manual_tool_frame` | N/A |
 | setWorkFrame | `rm_set_manual_work_frame` | N/A |
-| getForceTorque | `rm_get_force_data` | `getForce`（压力，不同语义） |
-| clearError | `rm_clear_system_err` | `clearFaultCode`（O6 可能不支持） |
+| getForceTorque | `rm_get_force_data` | `getForce`（压力，不同语义；阶段3 未实现，留接口） |
+| clearError | `rm_clear_system_err` | `clearFaultCode`（O6 不支持 → 返回 Unsupported） |
 | healthCheck | `rm_get_arm_software_info` + 状态 | `getVersion` + 状态 |

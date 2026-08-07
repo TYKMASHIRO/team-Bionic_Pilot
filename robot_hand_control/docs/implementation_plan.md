@@ -6,10 +6,10 @@
 
 | 阶段 | 名称 | 核心交付 | 状态 |
 |------|------|----------|------|
-| 0 | 仓库与 SDK 审计 | 4 份 docs | ✅ 进行中（本文档为产出之一） |
-| 1 | 工程骨架 | CMake、领域类型、接口、错误、配置、日志、Mock、最小 CLI、单测 | 待开始 |
-| 2 | RM75 Adapter | RealManAdapter：只读 + 低速运动 + 拖动示教接口 | 待开始 |
-| 3 | O6 Adapter | LinkerHandAdapter + RmPassthroughModbus | 待开始 |
+| 0 | 仓库与 SDK 审计 | 4 份 docs | ✅ 完成 |
+| 1 | 工程骨架 | CMake、领域类型、接口、错误、配置、日志、Mock、最小 CLI、单测 | ✅ 完成 |
+| 2 | RM75 Adapter | RealManAdapter：只读 + 低速运动 + 拖动示教接口 | ✅ 完成 |
+| 3 | O6 Adapter | LinkerHandAdapter + RmPassthroughModbus | ✅ 完成 |
 | 4 | 统一状态与同步记录 | StateStore、Recorder、事件、元数据 | 待开始 |
 | 5 | 轨迹管理与复现 | 加载/校验/调速/Dry-run/Mock 复现 | 待开始 |
 | 6 | Skill 框架 | 7 个基础 Skill + Runtime | 待开始 |
@@ -63,7 +63,7 @@
 
 **顺序**：先只读能力，再加低速运动能力。真实运动默认关闭。
 
-## 阶段 3：O6 Adapter
+## 阶段 3：O6 Adapter（✅ 完成）
 
 **任务**：
 - `RmPassthroughModbus : IModbus` 传输层（★ 关键）：
@@ -80,6 +80,16 @@
 - 连接顺序：先连 RM75，再配置透传，再访问 O6。
 
 **验收**：Mock 传输层可单测帧解析/组帧/CRC；硬件测试显式开启。
+
+**完成记录（详见 `session3.md`）**：
+- 新增 `linkerhand_codec`（纯函数 CRC16/帧解析/组帧，无厂商依赖，mock preset 可构建可测）与 `linkerhand_driver`（受 `ENABLE_LINKERHAND_DRIVER` 控制）。
+- `RmPassthroughModbus`：Tx/Rx 分离回调（`sendRawFrame` 执行 RM 事务并缓存响应，`receiveCompleteFrame` 取缓存）；单读 1 / 多读 3~12 / 多写 ≤10 数量限制映射；0x10 写后不回读（O6 只支持 0x04 读，回读校验不可靠）；header 用 `void*` 隔离 `rm_robot_handle`。
+- `LinkerHandAdapter`：预设 Open/Close/PreGrasp，`stop()` 重发当前位置，`clearError` 返回 Unsupported。
+- 测试：`unit_modbus_frame_codec`（11 用例，mock/debug/hardware 均跑）；`unit_rm_passthrough`（`-Wl,--wrap=` 模拟 rm_* 符号，仅 debug/hardware）。
+- 结果：mock 8/8、debug 10/10、hardware 10/10 全部通过；`hw_arm_connect` 保持 DISABLED。
+- 未验证项（需硬件）：RM75 透传时序/波特率、O6 实际响应帧、压力数据格式、`rm_write_registers` 行为。
+
+**阶段4 入口**：`IDexterousHand` 已由 `LinkerHandAdapter` 满足，`LinkerHandAdapter::get_state()` 返回 `DexterousHandState` 可直接接入 `StateStore`。
 
 ## 阶段 4：统一状态与同步记录
 
