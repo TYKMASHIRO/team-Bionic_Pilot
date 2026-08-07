@@ -179,11 +179,11 @@ cmake --preset asan && cmake --build build/asan -j$(nproc) && ctest --test-dir b
 
 ## 9. 未验证项（阶段7 或后续实测）
 
-- ~~**真实硬件 Skill 执行**~~ → 已测（本次）：手部 3 个（open/close/apply_preset pregrasp）+ 拖动示教 20s 真机成功；`arm.move_to_safe_pose` 与 `combined.safe_release` 因安全位未标定**未做真实动作**。
+- ~~**真实硬件 Skill 执行**~~ → 已测（本次）：手部 3 个（open/close/apply_preset pregrasp）+ 拖动示教 20s + `combined.safe_release` 真机成功；`arm.move_to_safe_pose` 单臂安全位动作未单独实测（safe_release 已含该段，见 §10）。
 - ~~**拖动示教真实语义**~~ → 已测（本次）：RM 拖动示教期间采集正常（collector 线程喂 store），20s 共 695 帧、dropped=0、事件跨度匹配；停录后导入生成轨迹并可复现。修复 #11 前曾只录 1 帧。
 - **同步质量 sync=skewed**：20s 拖动示教 summary 报 `sync=skewed`（arm/hand 时间差超阈值）。拖动示教期间 RM75 忙于末端拖拽，O6 透传轮询可能被挤占 → 阶段7 复现协同动作前需实测/调优同步质量判据。
 - **超时/取消真实语义**：Mock 立即到位，无法体现真实 move_joint 阻塞时长；真机复现需实测跟随性（session5 §8 延续）。
-- **`combined.safe_release` 真实姿势**：manifest `safe_pose` 目前用工程默认 {0.1..0.7}；真机须按机械臂实际安全位标定后更新 `skills/arm.move_to_safe_pose.yaml` 与 `combined.safe_release.yaml`。
+- ~~**`combined.safe_release` 真实姿势**~~ → 已标定并验证（2026-08-07）：录制当前静止姿势（用户确认为安全位）写入两个 manifest `safe_pose`；真机执行成功，释放后手 254/255×6、臂与安全位误差<1e-4 rad。
 - **资源仲裁并发测试**：单线程测试覆盖；并发（多线程同发两个 Skill）未覆盖，阶段7 若引入并发编排需补测。
 
 ---
@@ -212,7 +212,7 @@ cd robot_hand_control
 
 > 真实运动红线：每个真实动作前用户确认；`arm.move_to_safe_pose` 与 `combined.safe_release` 的安全位**必须先按真机标定**（见 §9）。
 >
-> 已真机实测（2026-08-07）：`hand.open`/`hand.close`/`hand.apply_preset{preset:pregrasp}` 全部成功（61~74ms）；`arm.drag_teach_record{duration_s:20,import:true}` 成功（20474ms，`traj=traj_rec_20260807_163738_0`，695 帧/dropped=0，inspector 校验通过 pts=695 dur=20.3s）。拖动示教经修复 #11 后才正常采集；`arm.move_to_safe_pose` 与 `combined.safe_release` 因安全位未标定未做真实动作。
+> 已真机实测（2026-08-07）：`hand.open`/`hand.close`/`hand.apply_preset{preset:pregrasp}` 全部成功（61~74ms）；`arm.drag_teach_record{duration_s:20,import:true}` 成功（20474ms，`traj=traj_rec_20260807_163738_0`，695 帧/dropped=0，inspector 校验通过 pts=695 dur=20.3s）；`combined.safe_release` 成功（2456ms，手 254/255×6，臂回安全位）。拖动示教经修复 #11 后才正常采集；安全位经真机标定（录制当前静止姿势，用户确认）后写入 manifest。
 
 ---
 
