@@ -59,7 +59,7 @@ RobotArmState MockRobotArm::get_state() const {
     st.valid = connected_ && enabled_;
     st.fresh = true;
     st.timestamp = make_timestamp();
-    st.sequence = ++sequence_;
+    st.sequence = 0;  // 阶段4 由 StateStore 统一打序号
     return st;
 }
 

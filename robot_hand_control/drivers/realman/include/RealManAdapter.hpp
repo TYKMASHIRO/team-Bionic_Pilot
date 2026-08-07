@@ -38,6 +38,11 @@ public:
     domain::Result disconnect() override;
     bool is_connected() const override;
 
+    /// 借出 RM 底层句柄（rm_robot_handle* 上抛为 void*，厂商类型不泄漏）。
+    /// 所有权仍归本适配器：借用方（LinkerHand RS485 透传）只读不改、不释放；
+    /// 未连接时返回 nullptr。读取前加锁，与 connect/disconnect 互斥。
+    void* native_handle() const;
+
     // ---- 使能 ----
     domain::Result enable() override;
     domain::Result disable() override;

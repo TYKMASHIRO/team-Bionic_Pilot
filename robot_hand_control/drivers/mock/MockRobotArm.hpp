@@ -76,7 +76,6 @@ private:
     domain::Pose start_pose_;
     domain::ArmMotionState motion_state_{domain::ArmMotionState::Idle};
     domain::ForceTorque force_;
-    mutable std::uint64_t sequence_ = 0;
     bool recorded_ = false;
 };
 

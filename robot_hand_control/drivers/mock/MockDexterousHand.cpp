@@ -39,7 +39,7 @@ DexterousHandState MockDexterousHand::get_state() const {
     st.valid = connected_;
     st.fresh = connected_;
     st.timestamp = make_timestamp();
-    st.sequence = ++sequence_;
+    st.sequence = 0;  // 阶段4 由 StateStore 统一打序号
     return st;
 }
 

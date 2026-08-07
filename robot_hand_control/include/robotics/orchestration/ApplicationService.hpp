@@ -11,9 +11,13 @@
 #include "robotics/domain/states/DeviceHealth.hpp"
 #include "robotics/interfaces/IClock.hpp"
 #include "robotics/interfaces/IDexterousHand.hpp"
+#include "robotics/interfaces/IRecordSink.hpp"
 #include "robotics/interfaces/IRobotArm.hpp"
 #include "robotics/interfaces/ISafetySupervisor.hpp"
 #include "robotics/interfaces/IStateStore.hpp"
+#include "robotics/services/RecordingMetadata.hpp"
+#include "robotics/services/Recorder.hpp"
+#include "robotics/services/StateCollector.hpp"
 
 namespace robotics::domain {
 
@@ -27,7 +31,9 @@ public:
                        std::shared_ptr<IRobotArm> arm,
                        std::shared_ptr<IDexterousHand> hand,
                        std::shared_ptr<IStateStore> store,
-                       std::shared_ptr<ISafetySupervisor> safety);
+                       std::shared_ptr<ISafetySupervisor> safety,
+                       std::shared_ptr<StateCollector> collector = nullptr,
+                       std::shared_ptr<Recorder> recorder = nullptr);
 
     /// 连接全部已注册设备
     Result connect_all();
@@ -64,12 +70,27 @@ public:
                           const std::string& parameters_json,
                           bool dry_run);
 
+    // ---- 采集/录制（阶段4）----
+    Result start_collection();
+    Result stop_collection();
+    Result record_start(const std::string& out_dir, double rate_hz,
+                        const std::string& config_hash,
+                        const std::string& calibration_ref = "none");
+    Result record_stop();
+    Result record_event(const std::string& event);
+    bool recording() const;
+    RecordingMetadata recording_metadata() const;
+
 private:
     std::shared_ptr<IClock> clock_;
     std::shared_ptr<IRobotArm> arm_;
     std::shared_ptr<IDexterousHand> hand_;
     std::shared_ptr<IStateStore> store_;
     std::shared_ptr<ISafetySupervisor> safety_;
+    std::shared_ptr<StateCollector> collector_;
+    std::shared_ptr<Recorder> recorder_;
+    std::shared_ptr<IRecordSink> record_sink_;   ///< 具体 sink（CsvRecordSink）
+    RecordingMetadata last_metadata_;
 };
 
 }  // namespace robotics::domain

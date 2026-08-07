@@ -16,7 +16,8 @@ TEST(StateSnapshotTest, ArmStateValidAfterConnect) {
     auto st = arm.get_state();
     EXPECT_TRUE(st.valid);
     EXPECT_TRUE(st.fresh);
-    EXPECT_EQ(st.sequence, 1);
+    // 阶段4 起设备快照序号由 StateStore 统一打；适配器层返回 sequence=0
+    EXPECT_EQ(st.sequence, 0);
 }
 
 TEST(StateSnapshotTest, HandStateValidAfterConnect) {

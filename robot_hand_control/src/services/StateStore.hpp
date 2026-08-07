@@ -26,6 +26,8 @@ private:
     std::optional<RobotArmState> arm_;
     std::optional<DexterousHandState> hand_;
     mutable std::uint64_t combined_seq_ = 0;
+    std::uint64_t arm_seq_ = 0;
+    std::uint64_t hand_seq_ = 0;
 };
 
 }  // namespace robotics::domain

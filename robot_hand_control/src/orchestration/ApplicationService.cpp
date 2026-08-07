@@ -1,6 +1,7 @@
 #include "robotics/orchestration/ApplicationService.hpp"
 
 #include "robotics/infrastructure/logging/Logger.hpp"
+#include "src/infrastructure/recording/CsvRecordSink.hpp"
 
 namespace robotics::domain {
 
@@ -12,12 +13,19 @@ ApplicationService::ApplicationService(std::shared_ptr<IClock> clock,
                                        std::shared_ptr<IRobotArm> arm,
                                        std::shared_ptr<IDexterousHand> hand,
                                        std::shared_ptr<IStateStore> store,
-                                       std::shared_ptr<ISafetySupervisor> safety)
+                                       std::shared_ptr<ISafetySupervisor> safety,
+                                       std::shared_ptr<StateCollector> collector,
+                                       std::shared_ptr<Recorder> recorder)
     : clock_(std::move(clock)),
       arm_(std::move(arm)),
       hand_(std::move(hand)),
       store_(std::move(store)),
-      safety_(std::move(safety)) {}
+      safety_(std::move(safety)),
+      collector_(collector
+                     ? collector
+                     : std::make_shared<StateCollector>(arm_, hand_, store_, clock_,
+                                                        50.0, 50.0)),
+      recorder_(recorder) {}
 
 Result ApplicationService::connect_all() {
     if (arm_) {
@@ -173,6 +181,82 @@ SkillResult ApplicationService::run_skill(const std::string& skill_id,
     result.success = false;
     result.final_state = CommandState::Failed;
     return result;
+}
+
+// ---- 采集/录制（阶段4）----
+Result ApplicationService::start_collection() {
+    if (!collector_) return Result::ok();
+    return collector_->start();
+}
+
+Result ApplicationService::stop_collection() {
+    if (!collector_) return Result::ok();
+    return collector_->stop();
+}
+
+Result ApplicationService::record_start(const std::string& out_dir,
+                                        double rate_hz,
+                                        const std::string& config_hash,
+                                        const std::string& calibration_ref) {
+    if (recorder_ && recorder_->is_recording()) {
+        return Result::fail(Error::make(ErrorCategory::ResourceConflict,
+            DeviceType::Combined, "ApplicationService", 16, "录制已在进行"));
+    }
+    RecordingMetadata meta;
+    meta.session_id = make_session_id(clock_ ? clock_->now() : make_timestamp());
+    meta.sample_rate_hz = rate_hz;
+    meta.config_hash = config_hash;
+    meta.calibration_ref = calibration_ref;
+    meta.start_time = clock_ ? clock_->now() : make_timestamp();
+
+    auto sink = std::make_shared<robotics::infra::CsvRecordSink>(out_dir, meta);
+    if (!sink->is_open()) {
+        return Result::fail(Error::make(ErrorCategory::Configuration,
+            DeviceType::Combined, "ApplicationService", 17,
+            "无法创建录制目录: " + out_dir));
+    }
+    auto recorder = std::make_shared<Recorder>(store_, clock_, sink, rate_hz);
+    Result r = recorder->start();
+    if (!r.success) return r;
+
+    record_sink_ = sink;
+    recorder_ = recorder;
+    last_metadata_ = meta;
+    log().info("ApplicationService",
+               "record_start session=" + meta.session_id +
+                   " rate=" + std::to_string(rate_hz));
+    return r;
+}
+
+Result ApplicationService::record_stop() {
+    if (!recorder_ || !recorder_->is_recording()) {
+        return Result::fail(Error::make(ErrorCategory::ResourceConflict,
+            DeviceType::Combined, "ApplicationService", 18, "未在录制"));
+    }
+    Result r = recorder_->stop();
+    if (r.success) {
+        last_metadata_.end_time = clock_ ? clock_->now() : make_timestamp();
+        log().info("ApplicationService",
+                   "record_stop session=" + last_metadata_.session_id);
+    }
+    return r;
+}
+
+Result ApplicationService::record_event(const std::string& event) {
+    if (!recorder_ || !recorder_->is_recording()) {
+        return Result::fail(Error::make(ErrorCategory::ResourceConflict,
+            DeviceType::Combined, "ApplicationService", 19, "未在录制"));
+    }
+    recorder_->record_event(event);
+    return Result::ok();
+}
+
+bool ApplicationService::recording() const {
+    return recorder_ && recorder_->is_recording();
+}
+
+RecordingMetadata ApplicationService::recording_metadata() const {
+    return last_metadata_;
 }
 
 }  // namespace robotics::domain

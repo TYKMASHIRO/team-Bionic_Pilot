@@ -125,6 +125,11 @@ domain::Result RealManAdapter::connect() {
     return domain::Result::ok();
 }
 
+void* RealManAdapter::native_handle() const {
+    std::lock_guard<std::mutex> lock(impl_->mutex_);
+    return impl_->handle_;
+}
+
 domain::Result RealManAdapter::disconnect() {
     std::lock_guard<std::mutex> lock(impl_->mutex_);
     if (impl_->handle_) {

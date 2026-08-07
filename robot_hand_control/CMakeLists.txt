@@ -51,11 +51,14 @@ add_library(robotics_core
     src/domain/results/CommandResult.cpp
     src/domain/results/SkillResult.cpp
     src/infrastructure/time/SystemClock.cpp
+    src/infrastructure/recording/CsvRecordSink.cpp
     src/infrastructure/config/Configuration.cpp
     src/infrastructure/logging/Logger.cpp
     src/services/CommandScheduler.cpp
     src/services/ResourceManager.cpp
     src/services/StateStore.cpp
+    src/services/StateCollector.cpp
+    src/services/Recorder.cpp
     src/safety/SafetySupervisor.cpp
     src/trajectory/TrajectoryRepository.cpp
     src/orchestration/ApplicationService.cpp

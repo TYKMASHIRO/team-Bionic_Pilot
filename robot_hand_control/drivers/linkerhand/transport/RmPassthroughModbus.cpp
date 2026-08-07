@@ -102,9 +102,11 @@ public:
         if (data == nullptr || reg_count == 0 || reg_count > kRmMaxWrite) {
             return false;
         }
-        std::vector<int> values(reg_count);
-        for (size_t i = 0; i < reg_count; ++i) {
-            values[i] = static_cast<int>(data[i * 2]) << 8 | data[i * 2 + 1];
+        // RM 写多寄存器契约与读一致：data 为 2*num 个 int8（原始字节），
+        // 对应 Python 封装 (c_int * (num*2))。不得打包成 16 位值。
+        std::vector<int> values(reg_count * 2);
+        for (size_t i = 0; i < reg_count * 2; ++i) {
+            values[i] = data[i];
         }
 
         rm_peripheral_read_write_params_t params{};
@@ -167,13 +169,17 @@ private:
         if (count < kRmMinMultiRead || count > kRmMaxMultiRead) {
             return -1;
         }
-        std::vector<int> regs(count);
+        // RM 多读返回"每寄存器 2 个 int8"（原始字节，对应 Python 封装 num*2）。
+        // 缓冲区必须 2*count，否则 rm_read_multiple_* 越界写（heap-buffer-overflow）。
+        std::vector<int> regs(count * 2);
         if (read_registers(info.function, info.address, count, regs.data()) != 0) {
             return -1;
         }
         std::vector<uint16_t> regs16(count);
         for (size_t i = 0; i < count; ++i) {
-            regs16[i] = static_cast<uint16_t>(regs[i] & 0xFFFF);
+            // Modbus RTU 大端：高字节在前，低字节在后
+            regs16[i] = static_cast<uint16_t>(
+                ((regs[2 * i] & 0xFF) << 8) | (regs[2 * i + 1] & 0xFF));
         }
         return static_cast<int>(modbus_frame::build_read_response(
             resp, max_resp, info.slave_id, info.function, regs16.data(), count));

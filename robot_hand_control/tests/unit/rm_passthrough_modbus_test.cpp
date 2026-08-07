@@ -33,9 +33,11 @@ struct FakeRm {
 
 FakeRm g_fake;
 
-void copy_read_values(int* data, const std::vector<int>& src) {
-    for (size_t i = 0; i < src.size(); ++i) {
-        data[i] = src[i];
+/// 模拟 RM 多读契约：写入 2*params.num 个 int8（每寄存器 2 字节）。
+/// 若生产代码缓冲区少分配（count 而非 2*count），此处会越界写并触发 ASan。
+void copy_read_values(int* data, const std::vector<int>& src, int num) {
+    for (int i = 0; i < num * 2; ++i) {
+        data[i] = (static_cast<size_t>(i) < src.size()) ? src[i] : 0;
     }
 }
 
@@ -59,7 +61,7 @@ int __wrap_rm_read_multiple_input_registers(rm_robot_handle* h,
     (void)h;
     g_fake.last_read = params;
     if (g_fake.read_rc != 0) return g_fake.read_rc;
-    copy_read_values(data, g_fake.read_values);
+    copy_read_values(data, g_fake.read_values, params.num);
     return 0;
 }
 
@@ -79,7 +81,7 @@ int __wrap_rm_read_multiple_holding_registers(rm_robot_handle* h,
     (void)h;
     g_fake.last_read = params;
     if (g_fake.read_rc != 0) return g_fake.read_rc;
-    copy_read_values(data, g_fake.read_values);
+    copy_read_values(data, g_fake.read_values, params.num);
     return 0;
 }
 
@@ -99,7 +101,8 @@ int __wrap_rm_write_registers(rm_robot_handle* h,
     (void)h;
     g_fake.last_write = params;
     if (g_fake.write_rc != 0) return g_fake.write_rc;
-    g_fake.written_values.assign(data, data + params.num);
+    // 与读契约一致：写 2*num 个 int8（每寄存器 2 字节）
+    g_fake.written_values.assign(data, data + params.num * 2);
     return 0;
 }
 
@@ -138,7 +141,9 @@ TEST(RmPassthrough, ReadInputRegistersSix) {
     reset_fake();
     // O6 位置读取：slave 0x27, FC 0x04, addr 0, count 6
     const auto req = make_request({0x27, 0x04, 0x00, 0x00, 0x00, 0x06});
-    g_fake.read_values = {255, 128, 200, 10, 5, 1};
+    // RM 多读返回原始字节（int8）：每寄存器 2 字节 = 值 {255,128,200,10,5,1} 的高/低字节
+    g_fake.read_values = {0x00, 0xFF, 0x00, 0x80, 0x00, 0xC8,
+                          0x00, 0x0A, 0x00, 0x05, 0x00, 0x01};
     g_fake.read_rc = 0;
 
     RmPassthroughModbus mb(reinterpret_cast<void*>(0x1), 0x27, 500);
@@ -211,14 +216,16 @@ TEST(RmPassthrough, WriteMultipleRegistersSix) {
     EXPECT_EQ(resp[4], 0x00);
     EXPECT_EQ(resp[5], 0x06);
 
-    // RM 侧写入参数与数据
+    // RM 侧写入参数与数据（2*num 字节：每寄存器高字节 0x00 + 低字节值）
     EXPECT_EQ(g_fake.last_write.port, 1);
     EXPECT_EQ(g_fake.last_write.device, 0x27);
     EXPECT_EQ(g_fake.last_write.address, 0);
     EXPECT_EQ(g_fake.last_write.num, 6);
-    ASSERT_EQ(g_fake.written_values.size(), 6u);
-    EXPECT_EQ(g_fake.written_values[0], 0);
-    EXPECT_EQ(g_fake.written_values[5], 5);
+    ASSERT_EQ(g_fake.written_values.size(), 12u);
+    EXPECT_EQ(g_fake.written_values[0], 0x00);   // reg0 高字节
+    EXPECT_EQ(g_fake.written_values[1], 0x00);   // reg0 低字节
+    EXPECT_EQ(g_fake.written_values[3], 0x01);   // reg1 低字节
+    EXPECT_EQ(g_fake.written_values[11], 0x05);  // reg5 低字节
 }
 
 // ---- 0x06 写单寄存器 ----

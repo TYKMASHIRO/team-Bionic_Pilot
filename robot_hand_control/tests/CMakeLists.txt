@@ -13,6 +13,10 @@ endfunction()
 # ---- 单元测试 ----
 robot_add_test(unit_mock_connect unit/mock_connect_test.cpp)
 robot_add_test(unit_state_snapshot unit/state_snapshot_test.cpp)
+robot_add_test(unit_state_collector unit/state_collector_test.cpp)
+robot_add_test(unit_state_store_seq unit/state_store_seq_test.cpp)
+robot_add_test(unit_recorder unit/recorder_test.cpp)
+robot_add_test(unit_csv_sink unit/csv_sink_test.cpp)
 robot_add_test(unit_safety_reject unit/safety_reject_test.cpp)
 robot_add_test(unit_command_cancel unit/command_cancel_test.cpp)
 robot_add_test(unit_config_validation unit/config_validation_test.cpp)
@@ -52,6 +56,7 @@ endif()
 
 # ---- 集成测试（Mock 双设备）----
 robot_add_test(integration_mock_double integration/mock_double_test.cpp)
+robot_add_test(integration_mock_record integration/mock_record_test.cpp)
 
 # ---- 硬件测试（需真实设备，默认不构建、注册但 DISABLED）----
 if(ENABLE_HARDWARE_TESTS)

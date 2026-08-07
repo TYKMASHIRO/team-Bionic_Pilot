@@ -46,7 +46,6 @@ private:
     domain::HandJointVector speed_{};
     domain::HandJointVector torque_{};
     domain::HandState state_{domain::HandState::Idle};
-    mutable std::uint64_t sequence_ = 0;
 };
 
 }  // namespace robotics::mock

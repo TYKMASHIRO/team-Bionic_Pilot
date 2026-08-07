@@ -154,8 +154,11 @@ public:
             if (i < static_cast<int>(fc.size())) st.fault_code[i] = fc[i];
         }
 
-        // 压力数据（O6=4×10 点阵；无硬件时为空）
-        st.pressure = api_->getForce();
+        // 压力数据暂不读取（用户决策 2026-08-07）：O6 SDK 的 getForce() 请求 40 个
+        // 寄存器，超过 RM75 透传多读上限（12）。透传层会同步拒绝，但 SDK 每次失败
+        // 都向控制台打印"读取压力数据失败"，刷屏严重。压力列留空（shape=""/n=0），
+        // 待后续阶段做"拆分为多个 ≤12 的事务"再启用。格式本就未验证（见阶段3 笔记）。
+        // st.pressure = api_->getForce();
 
         const bool has_fault =
             std::any_of(fc.begin(), fc.end(),
