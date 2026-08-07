@@ -1,6 +1,10 @@
 #include "robotics/orchestration/ApplicationService.hpp"
 
+#include <filesystem>
+
 #include "robotics/infrastructure/logging/Logger.hpp"
+#include "robotics/skills/SkillFactory.hpp"
+#include "robotics/skills/SkillManifest.hpp"
 #include "src/infrastructure/recording/CsvRecordSink.hpp"
 #include "src/trajectory/TrajectoryRepository.hpp"
 
@@ -8,6 +12,7 @@ namespace robotics::domain {
 
 namespace {
 auto& log() { return robotics::infra::Logger::instance(); }
+namespace fs = std::filesystem;
 }  // namespace
 
 ApplicationService::ApplicationService(std::shared_ptr<IClock> clock,
@@ -29,7 +34,35 @@ ApplicationService::ApplicationService(std::shared_ptr<IClock> clock,
                                                         50.0, 50.0)),
       recorder_(recorder),
       trajectory_repo_(trajectory_repo ? trajectory_repo
-                                       : std::make_shared<TrajectoryRepository>()) {}
+                                       : std::make_shared<TrajectoryRepository>()) {
+    // Skill 上下文：设备/状态依赖 + 录制钩子（委托本服务，Skill 不碰具体 sink）
+    skill_ctx_.arm = arm_;
+    skill_ctx_.hand = hand_;
+    skill_ctx_.safety = safety_;
+    skill_ctx_.clock = clock_;
+    skill_ctx_.store = store_;
+    skill_ctx_.trajectory_repo = trajectory_repo_;
+    skill_ctx_.recording.start = [this](const std::string& dir, double rate,
+                                        const std::string& ch,
+                                        const std::string& calib) {
+        return record_start(dir, rate, ch, calib);
+    };
+    skill_ctx_.recording.stop = [this]() { return record_stop(); };
+    skill_ctx_.recording.event = [this](const std::string& e) {
+        return record_event(e);
+    };
+    skill_ctx_.recording.active = [this]() { return recording(); };
+    skill_ctx_.recording.last_session_dir = [this]() -> std::string {
+        if (last_record_dir_.empty() || last_metadata_.session_id.empty()) {
+            return {};
+        }
+        return last_record_dir_ + "/" + last_metadata_.session_id;
+    };
+    resource_manager_ = std::make_shared<ResourceManager>();
+    skill_runtime_ = std::make_shared<skills::SkillRuntime>(clock_);
+    skill_runtime_->set_resource_manager(resource_manager_);
+    skill_registry_ = std::make_shared<skills::SkillRegistry>();
+}
 
 Result ApplicationService::connect_all() {
     if (arm_) {
@@ -169,22 +202,83 @@ Result ApplicationService::hand_stop() {
     return hand_->stop();
 }
 
+Result ApplicationService::load_skills(const std::string& skills_dir) {
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    if (!fs::is_directory(skills_dir, ec)) {
+        return Result::fail(Error::make(ErrorCategory::Configuration,
+            DeviceType::Combined, "ApplicationService", 15,
+            "Skill 目录不存在: " + skills_dir));
+    }
+    int loaded = 0;
+    for (const auto& entry : fs::directory_iterator(skills_dir, ec)) {
+        if (ec) break;
+        if (!entry.is_regular_file(ec)) continue;
+        const std::string path = entry.path().string();
+        if (!(path.size() > 5 &&
+              path.compare(path.size() - 5, 5, ".yaml") == 0)) {
+            continue;
+        }
+        SkillDescriptor desc;
+        std::string err;
+        if (!skills::load_skill_manifest(path, desc, err)) {
+            log().warn("ApplicationService", "Skill manifest 加载失败: " + err);
+            continue;  // 坏 manifest 跳过，不影响其余
+        }
+        std::shared_ptr<domain::ISkill> skill;
+        skill = skills::make_skill(desc, skill_ctx_, err);
+        if (!skill) {
+            log().warn("ApplicationService",
+                       "Skill 构造失败: " + desc.id + ": " + err);
+            continue;
+        }
+        const Result r = skill_registry_->register_skill(skill);
+        if (r.success) {
+            ++loaded;
+            log().info("ApplicationService",
+                       "Skill 注册: " + desc.id + "@" + desc.version);
+        }
+    }
+    log().info("ApplicationService",
+               "load_skills dir=" + skills_dir + " loaded=" + std::to_string(loaded));
+    return Result::ok();
+}
+
 SkillResult ApplicationService::run_skill(const std::string& skill_id,
                                          const std::string& parameters_json,
-                                         bool dry_run) {
-    (void)parameters_json;
-    (void)dry_run;
-    SkillResult result;
-    result.skill_id = skill_id;
-    result.skill_version = "0.0.0";
-    // 阶段6 实现 SkillRuntime 后接入真实执行
-    result.failed_stage = "skill_runtime";
-    result.error = Error::make(ErrorCategory::Unsupported, DeviceType::Combined,
-        "ApplicationService", 15,
-        "Skill 运行时未实现（阶段6）");
-    result.success = false;
-    result.final_state = CommandState::Failed;
-    return result;
+                                         bool dry_run,
+                                         const std::function<bool()>& cancel) {
+    if (!skill_registry_ || !skill_runtime_) {
+        SkillResult result;
+        result.skill_id = skill_id;
+        result.skill_version = "0.0.0";
+        result.failed_stage = "skill_runtime";
+        result.error = Error::make(ErrorCategory::Internal, DeviceType::Combined,
+            "ApplicationService", 16, "Skill 运行时未初始化");
+        result.final_state = CommandState::Failed;
+        return result;
+    }
+    const std::shared_ptr<domain::ISkill> skill =
+        skill_registry_->find(skill_id);
+    if (!skill) {
+        SkillResult result;
+        result.skill_id = skill_id;
+        result.skill_version = "0.0.0";
+        result.failed_stage = "lookup";
+        result.error = Error::make(ErrorCategory::Validation, DeviceType::Combined,
+            "ApplicationService", 17,
+            "未注册的 Skill: " + skill_id + "（先 robotctl skill list）");
+        result.final_state = CommandState::Failed;
+        return result;
+    }
+    SkillResult r = skill_runtime_->run(skill, parameters_json, dry_run, cancel);
+    log().info("ApplicationService", r.to_string());
+    return r;
+}
+
+std::vector<SkillDescriptor> ApplicationService::skill_list() const {
+    return skill_registry_ ? skill_registry_->descriptors()
+                           : std::vector<SkillDescriptor>{};
 }
 
 // ---- 轨迹管理（阶段5）----
@@ -327,6 +421,7 @@ Result ApplicationService::record_start(const std::string& out_dir,
     record_sink_ = sink;
     recorder_ = recorder;
     last_metadata_ = meta;
+    last_record_dir_ = out_dir;  // 供 skill 导入定位 <out_dir>/<session_id>
     log().info("ApplicationService",
                "record_start session=" + meta.session_id +
                    " rate=" + std::to_string(rate_hz));

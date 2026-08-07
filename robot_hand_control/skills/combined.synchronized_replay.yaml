@@ -1,0 +1,55 @@
+# combined.synchronized_replay — 双设备同步复现轨迹
+id: combined.synchronized_replay
+name: "双设备同步复现轨迹"
+version: "1.0.0"
+description: "按统一时间轴同步回放轨迹：校验→设备在线→起点对齐→逐点下发 arm.move_joint + hand.set_joint_positions"
+required_resources: ["combined"]
+parameters:
+  - name: "trajectory_id"
+    type: "string"
+    required: true
+    description: "已导入的轨迹 id（traj_<session>）"
+  - name: "speed"
+    type: "double"
+    required: false
+    default: "1"
+    description: "时间轴缩放倍率（2=两倍速）"
+  - name: "timeout_ms"
+    type: "int"
+    required: false
+    default: "0"
+    description: "执行总时长上限（0=不限）"
+  - name: "arm_speed_ratio"
+    type: "double"
+    required: false
+    default: "0.2"
+    description: "arm move_joint 速度比"
+  - name: "align_start"
+    type: "bool"
+    required: false
+    default: "true"
+    description: "起点偏差超阈值时先 movej 首点对齐"
+preconditions:
+  - "机械臂与灵巧手已连接"
+  - "轨迹已加载且校验通过"
+execution_stages:
+  - "validate"
+  - "load_and_validate_trajectory"
+  - "device_online"
+  - "start_align"
+  - "replay"
+success_conditions:
+  - "全部轨迹点下发完成"
+failure_conditions:
+  - "轨迹校验失败"
+  - "设备离线"
+  - "安全评估拒绝"
+  - "取消/超时"
+timeout_ms: 0
+cancellation_policy: "controlled_stop"
+recovery_policy: "stop_and_report"
+safety_profile:
+  real_motion: true
+trajectory_references:
+  - "<trajectory_id>（参数指定）"
+calibration_references: []

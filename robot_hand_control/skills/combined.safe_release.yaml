@@ -1,0 +1,33 @@
+# combined.safe_release — 安全释放：手张开 + 臂回安全位
+id: combined.safe_release
+name: "安全释放（张开手并回安全位）"
+version: "1.0.0"
+description: "先 hand.open 释放抓握，再 arm 回到安全位；一旦开始即完成两个阶段（finish_current_command）"
+required_resources: ["combined"]
+parameters:
+  - name: "joints"
+    type: "double[]"
+    required: false
+    description: "安全位（rad，7 元素）；缺省用 manifest safe_pose"
+preconditions:
+  - "机械臂与灵巧手已连接"
+  - "安全位关节数 = 7"
+execution_stages:
+  - "validate"
+  - "hand_open"
+  - "arm_to_safe_pose"
+success_conditions:
+  - "手张开且臂回安全位"
+failure_conditions:
+  - "机械臂/灵巧手未连接"
+  - "安全位关节数非法"
+timeout_ms: 30000
+cancellation_policy: "finish_current_command"   # 开始后不中断，保证释放完整
+recovery_policy: "stop_and_report"
+safety_profile:
+  real_motion: true
+calibration_references: []
+
+# 技能专属数据：安全位（rad，7 元素）
+safe_pose: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+safe_pose_speed: 0.2

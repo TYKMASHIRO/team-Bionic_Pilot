@@ -12,7 +12,7 @@
 | 3 | O6 Adapter | LinkerHandAdapter + RmPassthroughModbus | ✅ 完成 |
 | 4 | 统一状态与同步记录 | StateStore、Recorder、事件、元数据 | ✅ 完成 |
 | 5 | 轨迹管理与复现 | 加载/校验/调速/Dry-run/Mock 复现 | ✅ 完成 |
-| 6 | Skill 框架 | 7 个基础 Skill + Runtime | 待开始 |
+| 6 | Skill 框架 | 7 个基础 Skill + Runtime | ✅ 完成 |
 | 7 | 座舱动作 Skill | 6 个 cockpit Skill | 待开始 |
 
 ## 阶段 0：仓库和 SDK 审计（✅）
@@ -125,16 +125,31 @@
 
 **阶段6 入口**：`TrajectoryReplayer` 即 `combined.synchronized_replay` 的核心；`run_skill("combined.synchronized_replay", params, dry_run)` 可在阶段6 内部委托 `ApplicationService::trajectory_replay`。
 
-## 阶段 6：Skill 框架
+## 阶段 6：Skill 框架 — ✅ 完成
 
-**Skill 清单**：
+**Skill 清单**（7 个全部实现）：
 - `arm.move_to_safe_pose`
 - `arm.drag_teach_record`（拖动示教 + 同步记录双设备）
 - `hand.open` / `hand.close` / `hand.apply_preset`
 - `combined.synchronized_replay`（★ 双设备协同复现）
 - `combined.safe_release`
 
-每个 Skill：manifest + 参数 + 前置条件 + 状态机 + 结果 + 测试。
+**交付组件**：
+- 接口：`ISkill`（descriptor/validate/execute）+ `SkillDescriptor`（preconditions/stages/success/failure/timeout/cancel/recovery/real_motion/safe_pose/preset 等）+ `SkillParams` + `SkillResult`。
+- 框架：`SkillManifest`（YAML 加载）、`SkillParams`（JSON→yaml-cpp 参数解析）、`SkillBase`（预置条件→dry-run→安全门→run）、`SkillRegistry`（线程安全注册）、`SkillRuntime`（资源互斥→validate→dry-run→execute→结果装配）、`SkillFactory`（id→实例）、`SkillContext`（依赖注入 + 录制钩子）。
+- 7 个 Skill：`src/skills/` 下 ArmMoveToSafePose / ArmDragTeachRecord / HandPreset / CombinedSynchronizedReplay / CombinedSafeRelease。
+- manifest：`skills/*.yaml`（7 个，id/version/required_resources 必填）。
+- ApplicationService 接入：`load_skills` / `skill_list` / `run_skill`；CLI：`skill list` / `skill <id> [params] [--dry-run]`。
+- 测试：4 个新目标 → mock(21) / debug(23) / asan(23) 全过。
+
+**关键决策**：
+1. 真实运动双重门控：`--enable-motion`（CLI/ApplicationService）→ `SafetySupervisor` → `SkillBase::require_real_motion`；缺一即 safety_stopped。
+2. 超时并入 cancel 回调（`desc.timeout`），Skill 在阶段边界轮询受控停止；超时/取消语义由 Skill 自行判定（SynchronizedReplay 映射 report.cancelled/timed_out）。
+3. 资源互斥在 `SkillRuntime`（非 dry-run），`required_resources` 展开 + 去重（`combined` 含 arm+hand 不重复占用）。
+4. 技能专属数据（safe_pose/safe_pose_speed/preset）放 manifest，禁止硬编码 C++。
+5. `combined.safe_release` = 手张开 + 臂回安全位，开始即完成（finish_current_command）。
+
+**阶段7 入口**：Skill 层已稳定，可逐座舱 Skill 实现（approach_control_stick / grasp_control_stick / release_control_stick / push_throttle / press_button / rotate_knob），每个用阶段/成功判据/超时/安全策略/恢复策略实现，不得写成无状态 API 调用串。
 
 ## 阶段 7：座舱动作 Skill
 

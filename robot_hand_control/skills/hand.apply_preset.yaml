@@ -1,0 +1,28 @@
+# hand.apply_preset — 灵巧手应用任意预设
+id: hand.apply_preset
+name: "灵巧手应用预设"
+version: "1.0.0"
+description: "将 O6 设为指定预设（preset: open/close/pregrasp/custom）"
+required_resources: ["hand"]
+parameters:
+  - name: "preset"
+    type: "preset"
+    required: true
+    description: "open/close/pregrasp/custom"
+preconditions:
+  - "灵巧手已连接"
+  - "preset 合法"
+execution_stages:
+  - "validate"
+  - "apply_preset"
+success_conditions:
+  - "apply_preset 返回成功"
+failure_conditions:
+  - "灵巧手未连接"
+  - "preset 非法"
+timeout_ms: 10000
+cancellation_policy: "finish_current_command"
+recovery_policy: "stop_and_report"
+safety_profile:
+  real_motion: true
+calibration_references: []

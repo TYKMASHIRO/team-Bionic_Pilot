@@ -81,6 +81,12 @@ void print_usage() {
         "  trajectory replay <id> [--speed <x>] [--dry-run] [--enable-motion]\n"
         "                       复现轨迹（--enable-motion 真实运动；Ctrl-C 取消）\n"
         "  [--data-dir <dir>]   轨迹数据目录（默认 data/trajectories）\n"
+        "\n"
+        "Skill（阶段6）:\n"
+        "  skill list            列出已注册 Skill\n"
+        "  skill <id> [params] [--dry-run]\n"
+        "                       执行 Skill（params 为 JSON 对象；Ctrl-C 取消）\n"
+        "                       [--skills-dir <dir>]  Skill manifest 目录（默认 skills/）\n"
         "\n";
 }
 
@@ -92,6 +98,7 @@ struct CliOptions {
     double rate_hz = 50.0;
     double speed = 1.0;        ///< 轨迹调速倍率（--speed）
     std::string data_dir = "data/trajectories";  ///< 轨迹数据目录（--data-dir）
+    std::string skills_dir = "skills";           ///< Skill manifest 目录（--skills-dir）
     std::vector<std::string> tokens;
 };
 
@@ -130,6 +137,13 @@ CliOptions parse_args(const std::vector<std::string>& args) {
             }
         } else if (a.rfind("--data-dir=", 0) == 0) {
             o.data_dir = a.c_str() + std::strlen("--data-dir=");
+        } else if (a == "--skills-dir") {
+            if (i + 1 < args.size()) {
+                o.skills_dir = args[i + 1];
+                ++i;
+            }
+        } else if (a.rfind("--skills-dir=", 0) == 0) {
+            o.skills_dir = a.c_str() + std::strlen("--skills-dir=");
         } else {
             o.tokens.push_back(a);
         }
@@ -396,6 +410,53 @@ int run(int argc, char** argv) {
 
         print_usage();
         return 1;
+    }
+
+    // ---- Skill 框架（阶段6）----
+    if (cmd == "skill") {
+        // 加载 manifest（目录缺失仅告警，lookup 会自然失败）
+        app.load_skills(opts.skills_dir);
+        if (tokens.size() < 2) {
+            print_usage();
+            return 1;
+        }
+        const std::string sub = tokens[1];
+        if (sub == "list") {
+            const auto skills = app.skill_list();
+            if (skills.empty()) {
+                std::cout << "（无已注册 Skill）\n";
+                return 0;
+            }
+            for (const auto& d : skills) {
+                std::cout << d.id << "  ver=" << d.version
+                          << (d.real_motion ? "  [real-motion]" : "")
+                          << "  " << (d.description.empty() ? "" : d.description)
+                          << "\n";
+            }
+            return 0;
+        }
+        // skill <id> [params_json] [--dry-run]
+        const bool dry_run =
+            std::find(tokens.begin(), tokens.end(), "--dry-run") != tokens.end();
+        std::string params_json;
+        for (std::size_t i = 2; i < tokens.size(); ++i) {
+            if (tokens[i] == "--dry-run") continue;
+            params_json = tokens[i];
+            break;
+        }
+        // 前置需要设备在线（skill preconditions 包含设备在线；Mock 建默认连接）
+        {
+            const auto cr = app.connect_all();
+            if (!cr.success) {
+                std::cerr << "设备连接失败: " << cr.error.to_string() << "\n";
+                return 1;
+            }
+        }
+        const auto cancel = [&]() { return g_stop_requested != 0; };
+        const domain::SkillResult r =
+            app.run_skill(sub, params_json, dry_run, cancel);
+        std::cout << "[skill] " << r.to_string() << "\n";
+        return r.success ? 0 : 1;
     }
 
     // 其余命令：连接（real 幂等；mock 建立默认连接）

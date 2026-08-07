@@ -59,10 +59,16 @@ robot_add_test(unit_trajectory_csv_loader unit/trajectory_csv_loader_test.cpp)
 robot_add_test(unit_trajectory_validator unit/trajectory_validator_test.cpp)
 robot_add_test(unit_trajectory_replayer unit/trajectory_replayer_test.cpp)
 
+# ---- 阶段6 Skill 框架测试 ----
+robot_add_test(unit_skill_manifest unit/skill_manifest_test.cpp)
+robot_add_test(unit_skill_runtime unit/skill_runtime_test.cpp)
+robot_add_test(unit_skill_basic unit/skill_basic_test.cpp)
+
 # ---- 集成测试（Mock 双设备）----
 robot_add_test(integration_mock_double integration/mock_double_test.cpp)
 robot_add_test(integration_mock_record integration/mock_record_test.cpp)
 robot_add_test(integration_trajectory_replay integration/trajectory_replay_integration_test.cpp)
+robot_add_test(integration_skill_combined integration/skill_combined_integration_test.cpp)
 
 # ---- 硬件测试（需真实设备，默认不构建、注册但 DISABLED）----
 if(ENABLE_HARDWARE_TESTS)

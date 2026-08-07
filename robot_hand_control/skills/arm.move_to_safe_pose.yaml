@@ -1,0 +1,32 @@
+# arm.move_to_safe_pose — 机械臂回到安全位
+id: arm.move_to_safe_pose
+name: "机械臂回到安全位"
+version: "1.0.0"
+description: "将 RM75 七关节移动到安全位（joints 参数可覆盖 manifest 安全位）"
+required_resources: ["arm"]
+parameters:
+  - name: "joints"
+    type: "double[]"
+    required: false
+    description: "目标关节（rad，7 元素）；缺省用 manifest safe_pose"
+preconditions:
+  - "机械臂已连接"
+  - "安全位关节数 = 7"
+execution_stages:
+  - "validate"
+  - "move_to_safe_pose"
+success_conditions:
+  - "move_joint 返回成功"
+failure_conditions:
+  - "机械臂未连接"
+  - "安全位关节数非法"
+timeout_ms: 30000
+cancellation_policy: "finish_current_command"
+recovery_policy: "stop_and_report"
+safety_profile:
+  real_motion: true
+calibration_references: []
+
+# 技能专属数据：安全位（rad，7 元素）
+safe_pose: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+safe_pose_speed: 0.2

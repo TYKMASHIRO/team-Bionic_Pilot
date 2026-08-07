@@ -1,0 +1,52 @@
+# arm.drag_teach_record — 拖动示教 + 同步记录双设备
+id: arm.drag_teach_record
+name: "拖动示教并记录轨迹"
+version: "1.0.0"
+description: "进入 RM 拖动示教模式（控制器内记录轨迹），同时同步记录双设备状态为录制资产，录制结束后可选导入为轨迹"
+required_resources: ["combined"]
+parameters:
+  - name: "out_dir"
+    type: "string"
+    required: true
+    description: "录制父目录（录制写入 <out_dir>/<session_id>/）"
+  - name: "duration_s"
+    type: "double"
+    required: false
+    default: "0"
+    description: "录制时长（秒）；0=直到取消（Ctrl-C）"
+  - name: "rate_hz"
+    type: "double"
+    required: false
+    default: "50"
+    description: "状态采样率"
+  - name: "import"
+    type: "bool"
+    required: false
+    default: "true"
+    description: "录制后导入为轨迹资产"
+preconditions:
+  - "机械臂已连接"
+  - "out_dir 非空"
+  - "rate_hz > 0"
+  - "duration_s >= 0"
+execution_stages:
+  - "validate"
+  - "start_drag_teach"
+  - "start_recording"
+  - "wait_drag"
+  - "stop_recording"
+  - "stop_drag_teach"
+  - "import_recording"
+success_conditions:
+  - "示教开始且录制结束"
+  - "导入（如需）成功"
+failure_conditions:
+  - "机械臂未连接"
+  - "录制目录不可写"
+  - "示教中途异常"
+timeout_ms: 120000
+cancellation_policy: "controlled_stop"   # 取消=受控停止：先停录制再停示教
+recovery_policy: "stop_and_report"
+safety_profile:
+  real_motion: true
+calibration_references: []

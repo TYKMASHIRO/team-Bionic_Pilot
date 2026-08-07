@@ -65,6 +65,17 @@ add_library(robotics_core
     src/trajectory/TrajectoryCsvLoader.cpp
     src/trajectory/TrajectoryValidator.cpp
     src/trajectory/TrajectoryReplayer.cpp
+    src/skills/SkillManifest.cpp
+    src/skills/SkillParams.cpp
+    src/skills/SkillBase.cpp
+    src/skills/SkillRegistry.cpp
+    src/skills/SkillRuntime.cpp
+    src/skills/SkillFactory.cpp
+    src/skills/ArmMoveToSafePoseSkill.cpp
+    src/skills/ArmDragTeachRecordSkill.cpp
+    src/skills/HandPresetSkill.cpp
+    src/skills/CombinedSynchronizedReplaySkill.cpp
+    src/skills/CombinedSafeReleaseSkill.cpp
     src/orchestration/ApplicationService.cpp
 )
 

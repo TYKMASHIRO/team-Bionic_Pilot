@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -18,7 +19,11 @@
 #include "robotics/interfaces/ITrajectoryRepository.hpp"
 #include "robotics/services/RecordingMetadata.hpp"
 #include "robotics/services/Recorder.hpp"
+#include "robotics/services/ResourceManager.hpp"
 #include "robotics/services/StateCollector.hpp"
+#include "robotics/skills/SkillContext.hpp"
+#include "robotics/skills/SkillRegistry.hpp"
+#include "robotics/skills/SkillRuntime.hpp"
 #include "robotics/trajectory/TrajectoryReplayer.hpp"
 #include "robotics/trajectory/TrajectoryValidator.hpp"
 
@@ -96,10 +101,15 @@ public:
     Result hand_close(bool dry_run);
     Result hand_stop();
 
-    // 一期 skill 执行（占位：synchronized_replay 等阶段6实现）
+    // ---- Skill 框架（阶段6）----
+    /// 从 skills_dir 加载 *.yaml manifest 并注册全部 Skill（幂等，重复调用覆盖）。
+    Result load_skills(const std::string& skills_dir);
+    /// 执行一个 Skill（经 SkillRuntime）。cancel 返回 true 表示请求取消。
     SkillResult run_skill(const std::string& skill_id,
-                          const std::string& parameters_json,
-                          bool dry_run);
+                          const std::string& parameters_json, bool dry_run,
+                          const std::function<bool()>& cancel = nullptr);
+    /// 已注册 Skill 描述列表。
+    std::vector<SkillDescriptor> skill_list() const;
 
     // ---- 采集/录制（阶段4）----
     Result start_collection();
@@ -123,6 +133,13 @@ private:
     std::shared_ptr<IRecordSink> record_sink_;   ///< 具体 sink（CsvRecordSink）
     RecordingMetadata last_metadata_;
     mutable std::shared_ptr<ITrajectoryRepository> trajectory_repo_;
+
+    // ---- Skill 框架状态 ----
+    std::shared_ptr<skills::SkillRegistry> skill_registry_;
+    std::shared_ptr<skills::SkillRuntime> skill_runtime_;
+    std::shared_ptr<ResourceManager> resource_manager_;
+    skills::SkillContext skill_ctx_;
+    std::string last_record_dir_;  ///< 最近一次录制父目录（供 skill 导入定位会话）
 };
 
 }  // namespace robotics::domain

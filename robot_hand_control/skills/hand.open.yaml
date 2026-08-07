@@ -1,0 +1,24 @@
+# hand.open — 灵巧手完全张开
+id: hand.open
+name: "灵巧手张开"
+version: "1.0.0"
+description: "将 O6 六通道位置设为完全张开 {255×6}"
+required_resources: ["hand"]
+preconditions:
+  - "灵巧手已连接"
+execution_stages:
+  - "validate"
+  - "apply_preset"
+success_conditions:
+  - "apply_preset(Open) 返回成功"
+failure_conditions:
+  - "灵巧手未连接"
+timeout_ms: 10000
+cancellation_policy: "finish_current_command"
+recovery_policy: "stop_and_report"
+safety_profile:
+  real_motion: true
+calibration_references: []
+
+# 技能专属数据：固定预设
+preset: "open"
