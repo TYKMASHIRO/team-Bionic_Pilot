@@ -1,0 +1,20 @@
+# 构建输出
+build/
+cmake-build-*/
+
+# 日志与数据
+logs/
+data/recordings/
+data/trajectories/
+data/skills/
+*.log
+
+# 编辑器
+.idea/
+.vscode/
+
+# 编译产物
+*.o
+*.so
+*.a
+compile_commands.json

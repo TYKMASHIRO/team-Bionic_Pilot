@@ -1,0 +1,101 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 22
+  },
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "generator": "Unix Makefiles",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "CMAKE_BUILD_TYPE": "Debug",
+        "BUILD_TESTING": "ON",
+        "ENABLE_SANITIZERS": "OFF"
+      }
+    },
+    {
+      "name": "mock",
+      "displayName": "Mock (no vendor drivers)",
+      "inherits": "base",
+      "cacheVariables": {
+        "ENABLE_REALMAN_DRIVER": "OFF",
+        "ENABLE_LINKERHAND_DRIVER": "OFF",
+        "ENABLE_HARDWARE_TESTS": "OFF"
+      }
+    },
+    {
+      "name": "debug",
+      "displayName": "Debug (all drivers on)",
+      "inherits": "base",
+      "cacheVariables": {
+        "ENABLE_REALMAN_DRIVER": "ON",
+        "ENABLE_LINKERHAND_DRIVER": "ON",
+        "ENABLE_HARDWARE_TESTS": "OFF"
+      }
+    },
+    {
+      "name": "release",
+      "displayName": "Release",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "ENABLE_REALMAN_DRIVER": "ON",
+        "ENABLE_LINKERHAND_DRIVER": "ON"
+      }
+    },
+    {
+      "name": "asan",
+      "displayName": "AddressSanitizer",
+      "inherits": "debug",
+      "cacheVariables": {
+        "ENABLE_SANITIZERS": "ON"
+      }
+    },
+    {
+      "name": "hardware",
+      "displayName": "Hardware tests (real devices)",
+      "inherits": "debug",
+      "cacheVariables": {
+        "ENABLE_HARDWARE_TESTS": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "mock",
+      "configurePreset": "mock"
+    },
+    {
+      "name": "debug",
+      "configurePreset": "debug"
+    },
+    {
+      "name": "release",
+      "configurePreset": "release"
+    },
+    {
+      "name": "asan",
+      "configurePreset": "asan"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "mock",
+      "configurePreset": "mock",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "debug",
+      "configurePreset": "debug",
+      "output": {
+        "outputOnFailure": true
+      }
+    }
+  ]
+}

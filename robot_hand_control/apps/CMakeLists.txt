@@ -1,0 +1,15 @@
+# 应用：robotctl（CLI）+ diagnostics
+
+add_executable(robotctl robotctl/main.cpp)
+target_link_libraries(robotctl PRIVATE robotics_core mock_devices)
+
+add_executable(diagnostics diagnostics/main.cpp)
+target_link_libraries(diagnostics PRIVATE robotics_core)
+
+# 可选：驱动接入真实设备（阶段2/3后放开）
+if(ENABLE_REALMAN_DRIVER AND TARGET realman_driver)
+    target_link_libraries(robotctl PRIVATE realman_driver)
+endif()
+if(ENABLE_LINKERHAND_DRIVER AND TARGET linkerhand_driver)
+    target_link_libraries(robotctl PRIVATE linkerhand_driver)
+endif()

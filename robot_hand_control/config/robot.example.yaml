@@ -1,0 +1,32 @@
+# RM75-6F + O6 连接配置示例
+# 复制为 robot.yaml 并按实际环境修改。
+
+arm:
+  # RM75 通过以太网 TCP/IP 连接
+  ip: "192.168.1.18"
+  port: 8080
+  # RM SDK 线程模式：0=单 1=双 2=三线程（推模式状态上报需要三线程）
+  sdk_thread_mode: 2
+  auto_reconnect: false
+
+hand:
+  # O6 通信方式：
+  #   rm_passthrough  = 经 RM75 控制器末端 RS485 Modbus RTU 透传（当前唯一路径）
+  #   direct_serial   = 电脑 USB-RS485 直连（扩展路径，占位）
+  transport: "rm_passthrough"
+
+  # Direct Serial 模式专用（rm_passthrough 下不适用）
+  serial_device: "/dev/ttyUSB0"
+
+  # O6 通信参数（固定，不可软件修改）
+  baudrate: 115200
+  data_bits: 8
+  stop_bits: 1
+  parity: "none"
+
+  # Modbus 从站地址：右手 0x27，左手 0x28
+  modbus_slave_id: 0x27
+  right_hand: true
+
+  # 状态采集频率（Hz）
+  sample_rate_hz: 50.0

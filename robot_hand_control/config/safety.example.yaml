@@ -1,0 +1,18 @@
+# 安全配置示例
+# 所有安全阈值必须在此配置；未配置的安全项默认拒绝真实运动。
+# 不得直接使用设备额定最大值作为工作阈值。
+
+# 机械臂
+max_joint_velocity_rad_s: 3.0      # 最大关节速度 (rad/s)
+max_tcp_velocity_m_s: 0.5          # 最大 TCP 速度 (m/s)
+max_force_n: 100.0                 # 最大末端力 (N)
+
+# 灵巧手
+max_hand_temperature_c: 60.0       # O6 最大温度 (℃)
+
+# 状态与同步
+max_state_delay_ms: 500.0          # 状态数据最大允许延迟 (ms)
+start_pose_tolerance_m: 0.02       # 轨迹复现起点偏差阈值 (m)
+
+# 超时
+motion_timeout_s: 10.0             # 运动命令超时 (s)

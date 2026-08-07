@@ -1,0 +1,8 @@
+# 日志配置示例
+level: "info"              # trace | debug | info | warn | error | critical
+directory: "logs"
+file_name: "robot_hand_control.log"
+max_size_bytes: 10485760   # 10MB
+max_files: 5
+console: true
+log_vendor_raw: false      # 是否记录厂商原始错误
