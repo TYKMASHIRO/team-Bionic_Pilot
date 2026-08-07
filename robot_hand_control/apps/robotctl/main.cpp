@@ -69,6 +69,18 @@ void print_usage() {
         "  hand preset open [--dry-run]\n"
         "  hand preset close [--dry-run]\n"
         "  hand stop\n"
+        "\n"
+        "轨迹（阶段5）:\n"
+        "  trajectory import <recording_dir>\n"
+        "                       导入录制为轨迹资产（data/trajectories/<id>）\n"
+        "  trajectory list        列出轨迹\n"
+        "  trajectory inspect <id>\n"
+        "                       轨迹信息与首尾点预览\n"
+        "  trajectory validate <id>\n"
+        "                       校验轨迹（时间轴/范围/关节数）\n"
+        "  trajectory replay <id> [--speed <x>] [--dry-run] [--enable-motion]\n"
+        "                       复现轨迹（--enable-motion 真实运动；Ctrl-C 取消）\n"
+        "  [--data-dir <dir>]   轨迹数据目录（默认 data/trajectories）\n"
         "\n";
 }
 
@@ -78,6 +90,8 @@ struct CliOptions {
     bool enable_motion = false;
     double duration_s = 3.0;
     double rate_hz = 50.0;
+    double speed = 1.0;        ///< 轨迹调速倍率（--speed）
+    std::string data_dir = "data/trajectories";  ///< 轨迹数据目录（--data-dir）
     std::vector<std::string> tokens;
 };
 
@@ -104,6 +118,18 @@ CliOptions parse_args(const std::vector<std::string>& args) {
             ++i;
         } else if (a.rfind("--rate=", 0) == 0) {
             o.rate_hz = std::atof(a.c_str() + std::strlen("--rate="));
+        } else if (a == "--speed") {
+            take_next_double(i, &o.speed);
+            ++i;
+        } else if (a.rfind("--speed=", 0) == 0) {
+            o.speed = std::atof(a.c_str() + std::strlen("--speed="));
+        } else if (a == "--data-dir") {
+            if (i + 1 < args.size()) {
+                o.data_dir = args[i + 1];
+                ++i;
+            }
+        } else if (a.rfind("--data-dir=", 0) == 0) {
+            o.data_dir = a.c_str() + std::strlen("--data-dir=");
         } else {
             o.tokens.push_back(a);
         }
@@ -265,6 +291,113 @@ int run(int argc, char** argv) {
         return rst.success ? 0 : 1;
     }
 
+    auto print_result = [](const domain::Result& r) {
+        std::cout << (r.success ? "[ok] " : "[fail] ") << (r.success ? "" : r.error.to_string() + " ") << "\n";
+    };
+
+    // ---- 轨迹管理（阶段5）----
+    app.set_trajectory_data_dir(opts.data_dir);
+    if (cmd == "trajectory") {
+        if (tokens.size() < 2) { print_usage(); return 1; }
+        const std::string sub = tokens[1];
+
+        if (sub == "import") {
+            if (tokens.size() < 3) { print_usage(); return 1; }
+            std::string id;
+            const auto r = app.trajectory_import(tokens[2], id);
+            if (!r.success) { print_result(r); return 1; }
+            std::cout << "[ok] 导入轨迹 " << id << " <- " << tokens[2] << "\n";
+            return 0;
+        }
+        if (sub == "list") {
+            const auto metas = app.trajectory_list();
+            if (metas.empty()) {
+                std::cout << "（无轨迹）\n";
+                return 0;
+            }
+            for (const auto& m : metas) {
+                std::cout << m.trajectory_id
+                          << "  src=" << (m.source_recording.empty() ? "-" : m.source_recording)
+                          << "  pts=" << m.sample_count
+                          << "  dur=" << m.duration_s << "s"
+                          << "  ver=" << (m.version.empty() ? "-" : m.version)
+                          << "  created=" << m.created.to_iso8601() << "\n";
+            }
+            return 0;
+        }
+        if (sub == "inspect") {
+            if (tokens.size() < 3) { print_usage(); return 1; }
+            domain::Trajectory traj;
+            const auto r = app.trajectory_load(tokens[2], traj);
+            if (!r.success) { print_result(r); return 1; }
+            const auto& meta = traj.meta;
+            std::cout << "id=" << meta.trajectory_id
+                      << "  name=" << (meta.name.empty() ? "-" : meta.name)
+                      << "  src=" << (meta.source_recording.empty() ? "-" : meta.source_recording)
+                      << "  pts=" << meta.sample_count
+                      << "  dur=" << meta.duration_s << "s"
+                      << "  ver=" << (meta.version.empty() ? "-" : meta.version)
+                      << "  calib=" << (meta.calibration_id.empty() ? "-" : meta.calibration_id)
+                      << "\n";
+            // 首尾点预览
+            auto fmt = [](const domain::TrajectoryPoint& p) {
+                std::ostringstream ss;
+                ss << "t=" << p.t_offset_ns / 1000000 << "ms"
+                   << " arm=" << (p.arm.valid ? "ok" : "n/a")
+                   << " hand=" << (p.hand.valid ? "ok" : "n/a");
+                if (!p.event.empty()) ss << " ev=" << p.event;
+                return ss.str();
+            };
+            if (!traj.points.empty()) {
+                std::cout << "  首点: " << fmt(traj.points.front()) << "\n";
+                if (traj.points.size() > 1) {
+                    std::cout << "  末点: " << fmt(traj.points.back()) << "\n";
+                }
+            }
+            return 0;
+        }
+        if (sub == "validate") {
+            if (tokens.size() < 3) { print_usage(); return 1; }
+            domain::TrajectoryValidationReport report;
+            const auto r = app.trajectory_validate(tokens[2], report);
+            if (!r.success) { print_result(r); return 1; }
+            std::cout << (report.valid ? "[ok] " : "[fail] ") << report.to_string() << "\n";
+            return report.valid ? 0 : 1;
+        }
+        if (sub == "replay") {
+            if (tokens.size() < 3) { print_usage(); return 1; }
+            const bool dry_run =
+                std::find(tokens.begin(), tokens.end(), "--dry-run") != tokens.end();
+
+            // 非 dry-run：连接设备 + 真实运动许可
+            if (!dry_run) {
+                auto cr = app.connect_all();
+                if (!cr.success) {
+                    std::cerr << "设备连接失败: " << cr.error.to_string() << "\n";
+                    return 1;
+                }
+            }
+
+            domain::ReplayOptions options;
+            options.speed = opts.speed;
+            options.dry_run = dry_run;
+            domain::ReplayReport report;
+            const auto cancel = [&]() { return g_stop_requested != 0; };
+            const auto r = app.trajectory_replay(tokens[2], options, dry_run,
+                                                 cancel, report);
+            if (!r.success && report.error.is_ok()) {
+                // 前置错误（如未启用运动）没有 report
+                std::cerr << "复现失败: " << r.error.to_string() << "\n";
+                return 1;
+            }
+            std::cout << "[replay] " << report.to_string() << "\n";
+            return report.success ? 0 : 1;
+        }
+
+        print_usage();
+        return 1;
+    }
+
     // 其余命令：连接（real 幂等；mock 建立默认连接）
     {
         auto cr = app.connect_all();
@@ -272,10 +405,6 @@ int run(int argc, char** argv) {
             std::cerr << "设备连接失败: " << cr.error.to_string() << "\n";
         }
     }
-
-    auto print_result = [](const domain::Result& r) {
-        std::cout << (r.success ? "[ok] " : "[fail] ") << (r.success ? "" : r.error.to_string() + " ") << "\n";
-    };
 
     // 诊断
     if (cmd == "doctor") {

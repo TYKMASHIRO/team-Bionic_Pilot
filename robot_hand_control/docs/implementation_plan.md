@@ -10,8 +10,8 @@
 | 1 | 工程骨架 | CMake、领域类型、接口、错误、配置、日志、Mock、最小 CLI、单测 | ✅ 完成 |
 | 2 | RM75 Adapter | RealManAdapter：只读 + 低速运动 + 拖动示教接口 | ✅ 完成 |
 | 3 | O6 Adapter | LinkerHandAdapter + RmPassthroughModbus | ✅ 完成 |
-| 4 | 统一状态与同步记录 | StateStore、Recorder、事件、元数据 | 待开始 |
-| 5 | 轨迹管理与复现 | 加载/校验/调速/Dry-run/Mock 复现 | 待开始 |
+| 4 | 统一状态与同步记录 | StateStore、Recorder、事件、元数据 | ✅ 完成 |
+| 5 | 轨迹管理与复现 | 加载/校验/调速/Dry-run/Mock 复现 | ✅ 完成 |
 | 6 | Skill 框架 | 7 个基础 Skill + Runtime | 待开始 |
 | 7 | 座舱动作 Skill | 6 个 cockpit Skill | 待开始 |
 
@@ -112,6 +112,18 @@
 - Mock 复现、取消、超时、执行报告。
 
 **验收**：Mock 复现完全通过前不允许真实组合运动。
+
+**完成记录（详见 `session5.md`）**：
+- 数据流：record（CsvRecordSink）→ import（TrajectoryCsvLoader）→ validate（TrajectoryValidator）→ replay（TrajectoryReplayer）。
+- 新增 `CsvStateColumns`：states.csv 110 列契约单一来源（表头/数据行同源），CsvRecordSink 与 TrajectoryCsvLoader 共用，保证录制写出的列序与轨迹读回一致。
+- `TrajectoryCsvLoader`：复用 CsvStateColumns 解析 states.csv，t_offset_ns 相对首行单调时间轴，events.csv 按稳态时间挂到最近点，metadata.txt 校验 format_version。
+- `TrajectoryValidator`：非空/版本/关节数/时间戳单调/NaN/范围（arm ±3.5 rad、hand 0-255）/双设备在场警告。
+- `TrajectoryReplayer`：校验 → 设备在线 → 起点偏差 → dry-run 提前返回 → 安全评估（需 --enable-motion）→ 起点对齐（偏差超阈值先 movej 首点）→ 按统一时间轴逐点下发 arm.move_joint + hand.set_joint_positions；支持调速（t_offset_ns/speed）、取消（每点前回调）、超时、执行报告。
+- `TrajectoryRepository` 磁盘持久化：`<data_dir>/<id>/` 下 states.csv + events.csv + metadata.txt + manifest.txt；`import_recording(recording_dir)` 生成 `traj_<session>` 幂等 id；跨进程可见。
+- CLI：`robotctl trajectory import/list/inspect/validate/replay [--speed/--dry-run/--data-dir/--enable-motion]`；`trajectory_inspector <dir> [--validate]` 工具。
+- 测试：17/17 通过（含 unit_trajectory_csv_loader / unit_trajectory_validator / unit_trajectory_replayer / integration_trajectory_replay）。
+
+**阶段6 入口**：`TrajectoryReplayer` 即 `combined.synchronized_replay` 的核心；`run_skill("combined.synchronized_replay", params, dry_run)` 可在阶段6 内部委托 `ApplicationService::trajectory_replay`。
 
 ## 阶段 6：Skill 框架
 

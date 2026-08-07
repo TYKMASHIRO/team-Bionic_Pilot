@@ -2,6 +2,7 @@
 
 #include "robotics/infrastructure/logging/Logger.hpp"
 #include "src/infrastructure/recording/CsvRecordSink.hpp"
+#include "src/trajectory/TrajectoryRepository.hpp"
 
 namespace robotics::domain {
 
@@ -15,7 +16,8 @@ ApplicationService::ApplicationService(std::shared_ptr<IClock> clock,
                                        std::shared_ptr<IStateStore> store,
                                        std::shared_ptr<ISafetySupervisor> safety,
                                        std::shared_ptr<StateCollector> collector,
-                                       std::shared_ptr<Recorder> recorder)
+                                       std::shared_ptr<Recorder> recorder,
+                                       std::shared_ptr<ITrajectoryRepository> trajectory_repo)
     : clock_(std::move(clock)),
       arm_(std::move(arm)),
       hand_(std::move(hand)),
@@ -25,7 +27,9 @@ ApplicationService::ApplicationService(std::shared_ptr<IClock> clock,
                      ? collector
                      : std::make_shared<StateCollector>(arm_, hand_, store_, clock_,
                                                         50.0, 50.0)),
-      recorder_(recorder) {}
+      recorder_(recorder),
+      trajectory_repo_(trajectory_repo ? trajectory_repo
+                                       : std::make_shared<TrajectoryRepository>()) {}
 
 Result ApplicationService::connect_all() {
     if (arm_) {
@@ -181,6 +185,107 @@ SkillResult ApplicationService::run_skill(const std::string& skill_id,
     result.success = false;
     result.final_state = CommandState::Failed;
     return result;
+}
+
+// ---- 轨迹管理（阶段5）----
+Result ApplicationService::trajectory_import(const std::string& recording_dir,
+                                             std::string& out_id) {
+    if (!trajectory_repo_) {
+        return Result::fail(Error::make(ErrorCategory::Internal,
+            DeviceType::Combined, "ApplicationService", 30, "轨迹仓库未初始化"));
+    }
+    const Result r = trajectory_repo_->import_recording(recording_dir, out_id);
+    if (r.success) {
+        log().info("ApplicationService",
+                   "trajectory_import dir=" + recording_dir +
+                       " id=" + out_id);
+    }
+    return r;
+}
+
+std::vector<TrajectoryMeta> ApplicationService::trajectory_list() const {
+    return trajectory_repo_ ? trajectory_repo_->list()
+                            : std::vector<TrajectoryMeta>{};
+}
+
+Result ApplicationService::trajectory_load(const std::string& trajectory_id,
+                                           Trajectory& out) const {
+    if (!trajectory_repo_) {
+        return Result::fail(Error::make(ErrorCategory::Internal,
+            DeviceType::Combined, "ApplicationService", 31, "轨迹仓库未初始化"));
+    }
+    return trajectory_repo_->load(trajectory_id, out);
+}
+
+Result ApplicationService::trajectory_validate(
+    const std::string& trajectory_id, TrajectoryValidationReport& report) const {
+    Trajectory traj;
+    const Result ld = trajectory_load(trajectory_id, traj);
+    if (!ld.success) return ld;
+    TrajectoryValidator::validate(traj, report);
+    return Result::ok();
+}
+
+Result ApplicationService::trajectory_replay(
+    const std::string& trajectory_id, const ReplayOptions& options,
+    bool dry_run, const std::function<bool()>& cancel,
+    ReplayReport& report) const {
+    if (!trajectory_repo_) {
+        return Result::fail(Error::make(ErrorCategory::Internal,
+            DeviceType::Combined, "ApplicationService", 32, "轨迹仓库未初始化"));
+    }
+    Trajectory traj;
+    const Result ld = trajectory_load(trajectory_id, traj);
+    if (!ld.success) return ld;
+
+    if (dry_run) {
+        // 纯校验：不运动，无需设备连接
+        TrajectoryValidationReport vr;
+        TrajectoryValidator::validate(traj, vr);
+        report = ReplayReport{};
+        report.dry_run = true;
+        report.success = vr.valid;
+        report.total_points = traj.points.size();
+        report.failed_stage = vr.valid ? "dry_run" : "validate";
+        if (!vr.valid) {
+            report.error = Error::make(ErrorCategory::Validation,
+                DeviceType::Combined, "ApplicationService", 33, vr.to_string());
+        }
+        return Result::ok();
+    }
+
+    // 真实复现：需要设备 + 安全许可
+    if (!arm_ || !hand_) {
+        return Result::fail(Error::make(ErrorCategory::NotConnected,
+            DeviceType::Combined, "ApplicationService", 34,
+            "复现需要机械臂与灵巧手已注册"));
+    }
+    if (safety_ && !safety_->real_motion_enabled()) {
+        return Result::fail(Error::make(ErrorCategory::Safety,
+            DeviceType::Combined, "ApplicationService", 35,
+            "真实运动未启用（需要 --enable-motion 显式许可）"));
+    }
+    const ReplayOptions opts = options;
+    report = TrajectoryReplayer(arm_, hand_, safety_, clock_)
+                 .replay(traj, opts,
+                         cancel ? &cancel : nullptr);
+    if (!report.success) {
+        return Result::fail(report.error);
+    }
+    return Result::ok();
+}
+
+void ApplicationService::set_trajectory_repository(
+    std::shared_ptr<ITrajectoryRepository> repo) {
+    trajectory_repo_ = std::move(repo);
+}
+
+void ApplicationService::set_trajectory_data_dir(const std::string& dir) {
+    if (auto repo = std::dynamic_pointer_cast<TrajectoryRepository>(
+            trajectory_repo_)) {
+        repo->set_data_dir(dir);
+        log().info("ApplicationService", "trajectory data_dir=" + dir);
+    }
 }
 
 // ---- 采集/录制（阶段4）----

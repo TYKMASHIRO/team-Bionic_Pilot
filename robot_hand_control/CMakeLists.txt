@@ -50,6 +50,7 @@ add_library(robotics_core
     src/domain/states/DeviceHealth.cpp
     src/domain/results/CommandResult.cpp
     src/domain/results/SkillResult.cpp
+    src/domain/recording/CsvStateColumns.cpp
     src/infrastructure/time/SystemClock.cpp
     src/infrastructure/recording/CsvRecordSink.cpp
     src/infrastructure/config/Configuration.cpp
@@ -61,6 +62,9 @@ add_library(robotics_core
     src/services/Recorder.cpp
     src/safety/SafetySupervisor.cpp
     src/trajectory/TrajectoryRepository.cpp
+    src/trajectory/TrajectoryCsvLoader.cpp
+    src/trajectory/TrajectoryValidator.cpp
+    src/trajectory/TrajectoryReplayer.cpp
     src/orchestration/ApplicationService.cpp
 )
 

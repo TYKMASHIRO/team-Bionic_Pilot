@@ -49,6 +49,10 @@ public:
     /// 保存轨迹，返回生成的 id
     virtual Result save(const Trajectory& trajectory, std::string& out_id) = 0;
 
+    /// 把录制目录导入为轨迹资产；out_id 输出生成的轨迹 id
+    virtual Result import_recording(const std::string& recording_dir,
+                                    std::string& out_id) = 0;
+
     /// 列出全部轨迹元数据
     virtual std::vector<TrajectoryMeta> list() const = 0;
 };
