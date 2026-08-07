@@ -401,6 +401,17 @@ Result ApplicationService::record_start(const std::string& out_dir,
         return Result::fail(Error::make(ErrorCategory::ResourceConflict,
             DeviceType::Combined, "ApplicationService", 16, "录制已在进行"));
     }
+    // Recorder 从 StateStore 采样：采集线程不启动则只有首帧（真机 drag_teach_record 只录 1 帧的根因）。
+    // skill 路径只调 record_start（不显式 start_collection），这里自动补齐采集生命周期；
+    // CLI 显式 start_collection() 的路径 collector 已在运行，auto_collect=false，不受影响。
+    const bool auto_collect = (collector_ && !collector_->running());
+    if (auto_collect) {
+        Result rc = collector_->start();
+        if (!rc.success) return rc;
+    }
+    auto rollback_collection = [&]() {
+        if (auto_collect && collector_) collector_->stop();
+    };
     RecordingMetadata meta;
     meta.session_id = make_session_id(clock_ ? clock_->now() : make_timestamp());
     meta.sample_rate_hz = rate_hz;
@@ -410,18 +421,23 @@ Result ApplicationService::record_start(const std::string& out_dir,
 
     auto sink = std::make_shared<robotics::infra::CsvRecordSink>(out_dir, meta);
     if (!sink->is_open()) {
+        rollback_collection();
         return Result::fail(Error::make(ErrorCategory::Configuration,
             DeviceType::Combined, "ApplicationService", 17,
             "无法创建录制目录: " + out_dir));
     }
     auto recorder = std::make_shared<Recorder>(store_, clock_, sink, rate_hz);
     Result r = recorder->start();
-    if (!r.success) return r;
+    if (!r.success) {
+        rollback_collection();
+        return r;
+    }
 
     record_sink_ = sink;
     recorder_ = recorder;
     last_metadata_ = meta;
     last_record_dir_ = out_dir;  // 供 skill 导入定位 <out_dir>/<session_id>
+    record_stop_auto_stops_collection_ = auto_collect;
     log().info("ApplicationService",
                "record_start session=" + meta.session_id +
                    " rate=" + std::to_string(rate_hz));
@@ -436,6 +452,11 @@ Result ApplicationService::record_stop() {
     Result r = recorder_->stop();
     if (r.success) {
         last_metadata_.end_time = clock_ ? clock_->now() : make_timestamp();
+        // 若采集线程是本调用 record_start 自动启动的，这里回收（幂等 stop）。
+        if (record_stop_auto_stops_collection_ && collector_) {
+            collector_->stop();
+            record_stop_auto_stops_collection_ = false;
+        }
         log().info("ApplicationService",
                    "record_stop session=" + last_metadata_.session_id);
     }

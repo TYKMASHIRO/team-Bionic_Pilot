@@ -35,7 +35,7 @@
 | 阶段3 O6 Adapter | ✅ 完成 |
 | 阶段4 统一状态与同步记录 | ✅ 完成（session4.md） |
 | 阶段5 轨迹管理与复现 | ✅ 完成（session5.md） |
-| 阶段6 Skill 框架 | ✅ **完成**（代码 + Mock 测试，本次） |
+| 阶段6 Skill 框架 | ✅ **完成**（代码 + Mock 测试 + 真机手部/拖动示教验证） |
 | 阶段7 座舱动作 Skill | 待开始 |
 
 ---
@@ -155,6 +155,7 @@ cmake --preset asan && cmake --build build/asan -j$(nproc) && ctest --test-dir b
 8. **Mock 手 connect 默认张开 255**：安全门测试断言"手仍在 0"错误 → 改为比较 execute 前后状态不变。
 9. **manifest 测试缺技能专属数据**：`combined.safe_release`/`arm.move_to_safe_pose` 测试 manifest 未写 `safe_pose` → `resolve_safe_pose` 校验失败（"安全位需要 7 个关节值，实际 0"）→ 测试 manifest 补 `safe_pose`。
 10. **JSON 字符串缺右括号**：`R"({"trajectory_id":")" + id + R"(","timeout_ms":8000)"` 少了结尾 `}` → yaml-cpp 解析报 `end of map flow not found`，skill 报"缺少 trajectory_id" → 补 `}`。
+11. **skill 路径录制只录 1 帧（真机实测）**：`ApplicationService::record_start` 创建 Recorder 但不启动 StateCollector；Recorder 从 `store_` 采样，采集线程不跑则只有 connect 时那 1 帧被写盘（`frames_recorded=1`，events 却跨满全程）。CLI `record` 命令先显式 `start_collection()` 所以正常，skill 路径只调 recording hook（`record_start`）。修复：`record_start` 自动补齐采集生命周期（collector 未运行则启动并记录标志），`record_stop` 在自动启动的情况下幂等回收——CLI 显式 `start_collection()` 的路径不受影响。修复后真机 20s 拖动示教 `frames_recorded=695`、`dropped=0`。
 
 ---
 
@@ -178,8 +179,9 @@ cmake --preset asan && cmake --build build/asan -j$(nproc) && ctest --test-dir b
 
 ## 9. 未验证项（阶段7 或后续实测）
 
-- **真实硬件 Skill 执行**：本次 Mock 全过；阶段7 或验收时用 `--real skill ...` 做首次真机验证（每个真实动作需用户确认，见 §10 真机链路）。
-- **拖动示教真实语义**：Mock 的 `start_drag_teach` 立即返回；真机需确认 RM 拖动示教期间事件/状态采集节奏、示教结束自动停录。
+- ~~**真实硬件 Skill 执行**~~ → 已测（本次）：手部 3 个（open/close/apply_preset pregrasp）+ 拖动示教 20s 真机成功；`arm.move_to_safe_pose` 与 `combined.safe_release` 因安全位未标定**未做真实动作**。
+- ~~**拖动示教真实语义**~~ → 已测（本次）：RM 拖动示教期间采集正常（collector 线程喂 store），20s 共 695 帧、dropped=0、事件跨度匹配；停录后导入生成轨迹并可复现。修复 #11 前曾只录 1 帧。
+- **同步质量 sync=skewed**：20s 拖动示教 summary 报 `sync=skewed`（arm/hand 时间差超阈值）。拖动示教期间 RM75 忙于末端拖拽，O6 透传轮询可能被挤占 → 阶段7 复现协同动作前需实测/调优同步质量判据。
 - **超时/取消真实语义**：Mock 立即到位，无法体现真实 move_joint 阻塞时长；真机复现需实测跟随性（session5 §8 延续）。
 - **`combined.safe_release` 真实姿势**：manifest `safe_pose` 目前用工程默认 {0.1..0.7}；真机须按机械臂实际安全位标定后更新 `skills/arm.move_to_safe_pose.yaml` 与 `combined.safe_release.yaml`。
 - **资源仲裁并发测试**：单线程测试覆盖；并发（多线程同发两个 Skill）未覆盖，阶段7 若引入并发编排需补测。
@@ -209,6 +211,8 @@ cd robot_hand_control
 ```
 
 > 真实运动红线：每个真实动作前用户确认；`arm.move_to_safe_pose` 与 `combined.safe_release` 的安全位**必须先按真机标定**（见 §9）。
+>
+> 已真机实测（2026-08-07）：`hand.open`/`hand.close`/`hand.apply_preset{preset:pregrasp}` 全部成功（61~74ms）；`arm.drag_teach_record{duration_s:20,import:true}` 成功（20474ms，`traj=traj_rec_20260807_163738_0`，695 帧/dropped=0，inspector 校验通过 pts=695 dur=20.3s）。拖动示教经修复 #11 后才正常采集；`arm.move_to_safe_pose` 与 `combined.safe_release` 因安全位未标定未做真实动作。
 
 ---
 

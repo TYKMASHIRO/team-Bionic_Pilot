@@ -140,6 +140,9 @@ private:
     std::shared_ptr<ResourceManager> resource_manager_;
     skills::SkillContext skill_ctx_;
     std::string last_record_dir_;  ///< 最近一次录制父目录（供 skill 导入定位会话）
+    /// record_start 若自动启动了采集线程，则 record_stop 负责回收；
+    /// CLI 显式 start_collection() 的路径不受影响。
+    bool record_stop_auto_stops_collection_ = false;
 };
 
 }  // namespace robotics::domain
