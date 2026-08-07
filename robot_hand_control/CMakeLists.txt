@@ -85,9 +85,9 @@ if(ENABLE_REALMAN_DRIVER)
     add_subdirectory(drivers/realman)
 endif()
 
-if(ENABLE_LINKERHAND_DRIVER)
-    add_subdirectory(drivers/linkerhand)
-endif()
+# linkerhand 目录内：ModbusFrameCodec（纯函数，无厂商依赖）始终可构建；
+# linkerhand_driver（O6 适配，需 SDK）受 ENABLE_LINKERHAND_DRIVER 门控。
+add_subdirectory(drivers/linkerhand)
 
 # ---------------------------------------------------------------------------
 # 应用
